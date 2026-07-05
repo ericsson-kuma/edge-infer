@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>edge-infer benchmarks</title>
+<style>
+  :root {
+    --page:      #f9f9f7;
+    --surface:   #fcfcfb;
+    --ink:       #0b0b0b;
+    --ink-2:     #52514e;
+    --muted:     #898781;
+    --grid:      #e1e0d9;
+    --baseline:  #c3c2b7;
+    --border:    rgba(11,11,11,0.10);
+    --s1: #2a78d6;  /* blue   : naive / fp32   */
+    --s2: #1baf7a;  /* aqua   : reordered / int8 */
+    --s3: #eda100;  /* yellow : blocked        */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page:      #0d0d0d;
+      --surface:   #1a1a19;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --muted:     #898781;
+      --grid:      #2c2c2a;
+      --baseline:  #383835;
+      --border:    rgba(255,255,255,0.10);
+      --s1: #3987e5;
+      --s2: #199e70;
+      --s3: #c98500;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 16px 64px;
+  }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 26px; letter-spacing: -0.01em; }
+  h2 { font-size: 17px; margin: 40px 0 4px; }
+  .sub { color: var(--ink-2); margin-top: 6px; }
+  .sub a { color: inherit; }
+  .platform { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .note { color: var(--ink-2); font-size: 13.5px; margin: 6px 0 14px; max-width: 72ch; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 18px 12px;
+    margin-top: 10px;
+  }
+  /* Stat tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 22px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .tile .v { font-size: 28px; font-weight: 650; letter-spacing: -0.01em; }
+  .tile .k { color: var(--ink-2); font-size: 13px; margin-top: 2px; }
+  .tile .d { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  /* Legend */
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 8px 0 4px; font-size: 13px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .chip { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  /* Charts */
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .panels { grid-template-columns: 1fr; } }
+  svg { width: 100%; height: auto; display: block; }
+  .panel-title { font-size: 13px; color: var(--ink-2); margin-bottom: 2px; }
+  /* Tooltip */
+  #tip {
+    position: fixed; pointer-events: none; display: none; z-index: 10;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 12.5px; line-height: 1.45;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); max-width: 260px;
+  }
+  #tip b { font-weight: 650; }
+  #tip .m { color: var(--ink-2); }
+  /* Table */
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  thead th { color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--baseline); }
+  tbody tr { border-bottom: 1px solid var(--grid); }
+  tbody tr:last-child { border-bottom: none; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
+  footer a { color: var(--ink-2); }
+</style>
+</head>
+<body>
+<main>
+  <h1>edge-infer benchmarks</h1>
+  <p class="sub">Minimal zero-dependency INT8 inference runtime in C++17 —
+    <a href="https://github.com/ericsson-kuma/edge-infer">github.com/ericsson-kuma/edge-infer</a></p>
+  <p class="platform">Intel Core i7-6700 @ 3.40&nbsp;GHz (Skylake, AVX2+FMA) · g++ 11.4.0 ·
+    <code>-O3 -march=native -funroll-loops</code> · single-threaded ·
+    median of 5–21 reps after warmup (MAD in tooltips)</p>
+
+  <div class="tiles">
+    <div class="tile"><div class="v">2.9&times;</div><div class="k">INT8 end-to-end speedup</div><div class="d">LeNet-shaped CNN vs FP32 reference</div></div>
+    <div class="tile"><div class="v">11.2&times;</div><div class="k">blocked GEMM vs naive</div><div class="d">int8, 512&times;512</div></div>
+    <div class="tile"><div class="v">0.99903</div><div class="k">cosine similarity</div><div class="d">INT8 vs FP32 golden, worst of 8 inputs</div></div>
+    <div class="tile"><div class="v">29,008&nbsp;B</div><div class="k">runtime scratch</div><div class="d">static plan, zero alloc in run()</div></div>
+  </div>
+
+  <h2>GEMM optimization journey</h2>
+  <p class="note">Throughput of the same matmul as the kernel evolves:
+    <b>naive</b> (i,j,k; strided B) &rarr; <b>reordered</b> (i,k,j; streams B/C rows, auto-vectorizes)
+    &rarr; <b>blocked</b> (+256&times;256 K/N tiles, 8-wide unrolled inner loop). Higher is better.</p>
+  <div class="card">
+    <div class="legend">
+      <span><i class="chip" style="background:var(--s1)"></i>naive</span>
+      <span><i class="chip" style="background:var(--s2)"></i>reordered</span>
+      <span><i class="chip" style="background:var(--s3)"></i>blocked</span>
+    </div>
+    <div class="panels">
+      <div><div class="panel-title">int8 (int32 accumulate) — GMAC/s</div><div id="c-int8"></div></div>
+      <div><div class="panel-title">fp32 — GMAC/s</div><div id="c-fp32"></div></div>
+    </div>
+  </div>
+
+  <h2>INT8 vs FP32 (blocked kernel)</h2>
+  <p class="note">Scalar-widening int8 loses to AVX2-vectorized fp32 at small sizes and only
+    pulls ahead once its 4&times; smaller footprint wins cache residency — honest crossover,
+    not a marketing chart. Explicit int8 SIMD is top of the backlog.</p>
+  <div class="card">
+    <div class="legend">
+      <span><i class="chip" style="background:var(--s1)"></i>fp32</span>
+      <span><i class="chip" style="background:var(--s2)"></i>int8</span>
+    </div>
+    <div id="c-vs"></div>
+  </div>
+
+  <h2>End-to-end: LeNet-shaped CNN (1&times;28&times;28)</h2>
+  <p class="note">FP32 = direct-convolution reference path; INT8 = quantized graph
+    (im2col + int8 GEMM + saturating requantize) on the static memory plan. Lower is better.</p>
+  <div class="card"><div id="c-e2e"></div></div>
+
+  <h2>Full results</h2>
+  <div class="card tablewrap">
+    <table id="tbl">
+      <thead><tr><th>kernel</th><th>dtype</th><th>size</th><th>median ms</th><th>MAD ms</th><th>reps</th><th>GMAC/s</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <footer>
+    Numbers regenerate with <code>./build/bench/edge_bench</code> (writes
+    <code>bench_results.json</code>). Accuracy: max abs error 0.3629, cosine 0.99903
+    (worst over 8 random inputs). MIT licensed.
+  </footer>
+</main>
+
+<div id="tip"></div>
+
+<script>
+"use strict";
+// ---- data (from bench_results.json, commit-matched run) --------------------
+const GEMM = [
+["naive","int8",64,0.0943,0.0000,21,2.779],["reordered","int8",64,0.0292,0.0000,21,8.993],["blocked","int8",64,0.0325,0.0000,21,8.062],
+["naive","fp32",64,0.1672,0.0000,21,1.568],["reordered","fp32",64,0.0177,0.0000,21,14.814],["blocked","fp32",64,0.0193,0.0000,21,13.575],
+["naive","int8",128,0.7265,0.0052,21,2.887],["reordered","int8",128,0.1887,0.0000,21,11.111],["blocked","int8",128,0.1993,0.0002,21,10.522],
+["naive","fp32",128,1.9122,0.0398,21,1.097],["reordered","fp32",128,0.1548,0.0001,21,13.547],["blocked","fp32",128,0.1443,0.0001,21,14.529],
+["naive","int8",256,12.6718,1.0252,21,1.324],["reordered","int8",256,1.5081,0.0291,21,11.125],["blocked","int8",256,1.5517,0.0209,21,10.812],
+["naive","fp32",256,18.0453,0.2659,21,0.930],["reordered","fp32",256,1.6583,0.0304,21,10.117],["blocked","fp32",256,1.5297,0.0200,21,10.968],
+["naive","int8",512,143.6913,1.5253,7,0.934],["reordered","int8",512,12.0432,0.1330,21,11.145],["blocked","int8",512,12.8543,0.1407,21,10.441],
+["naive","fp32",512,205.0005,1.1676,5,0.655],["reordered","fp32",512,14.7758,0.2830,21,9.084],["blocked","fp32",512,15.0031,0.2801,21,8.946]];
+const E2E = { fp32_ms: 0.4732, int8_ms: 0.1624 };
+const SIZES = [64, 128, 256, 512];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---- tooltip ---------------------------------------------------------------
+const tip = document.getElementById("tip");
+function showTip(evt, html) {
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = evt.clientX + pad, y = evt.clientY - h - 10;
+  if (x + w > innerWidth - 8) x = evt.clientX - w - pad;
+  if (y < 8) y = evt.clientY + pad;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+// ---- grouped vertical bar chart ---------------------------------------------
+// groups: [{label, bars: [{series, color, value, tipHtml}]}]
+function groupedBars(el, groups, opts) {
+  const W = 440, H = 240, mL = 34, mR = 6, mT = 8, mB = 24;
+  const iw = W - mL - mR, ih = H - mT - mB;
+  const ymax = opts.ymax, ticks = opts.ticks;
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", opts.label);
+  const y = v => mT + ih * (1 - v / ymax);
+  let inner = "";
+  // gridlines + tick labels (recessive)
+  for (const t of ticks) {
+    inner += `<line x1="${mL}" y1="${y(t)}" x2="${W - mR}" y2="${y(t)}" stroke="${css('--grid')}" stroke-width="1"/>`;
+    inner += `<text x="${mL - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10" fill="${css('--muted')}">${t}</text>`;
+  }
+  const gw = iw / groups.length;
+  groups.forEach((g, gi) => {
+    const n = g.bars.length;
+    const bw = Math.min(26, (gw - 16) / n - 2);
+    const total = n * bw + (n - 1) * 2;               // 2px gap between bars
+    let x0 = mL + gi * gw + (gw - total) / 2;
+    g.bars.forEach((b, bi) => {
+      const x = x0 + bi * (bw + 2);
+      const yv = y(b.value), hb = mT + ih - yv, r = Math.min(4, hb);
+      // bar with rounded top corners, anchored to baseline
+      inner += `<path class="bar" data-tip="${b.tipHtml}" d="M${x},${mT + ih} V${yv + r} Q${x},${yv} ${x + r},${yv} H${x + bw - r} Q${x + bw},${yv} ${x + bw},${yv + r} V${mT + ih} Z" fill="${b.color}"/>`;
+      // wider transparent hit target
+      inner += `<rect class="hit" data-tip="${b.tipHtml}" x="${x - 2}" y="${mT}" width="${bw + 4}" height="${ih}" fill="transparent"/>`;
+    });
+    inner += `<text x="${mL + gi * gw + gw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="${css('--ink-2')}">${g.label}</text>`;
+  });
+  inner += `<line x1="${mL}" y1="${mT + ih}" x2="${W - mR}" y2="${mT + ih}" stroke="${css('--baseline')}" stroke-width="1"/>`;
+  svg.innerHTML = inner;
+  el.appendChild(svg);
+  svg.querySelectorAll(".hit,.bar").forEach(node => {
+    node.addEventListener("mousemove", e => showTip(e, node.getAttribute("data-tip")));
+    node.addEventListener("mouseleave", hideTip);
+  });
+}
+
+const KCOLOR = { naive: css('--s1'), reordered: css('--s2'), blocked: css('--s3') };
+const gemmTip = r =>
+  `<b>${r[0]}</b> &middot; ${r[1]} &middot; ${r[2]}&times;${r[2]}<br>` +
+  `<span class='m'>median ${r[3].toFixed(r[3] < 1 ? 4 : 2)} ms &plusmn; ${r[4].toFixed(4)} MAD (${r[5]} reps)</span><br>` +
+  `${r[6].toFixed(2)} GMAC/s`;
+
+for (const dt of ["int8", "fp32"]) {
+  const groups = SIZES.map(sz => ({
+    label: sz + "×" + sz,
+    bars: GEMM.filter(r => r[1] === dt && r[2] === sz).map(r => ({
+      color: KCOLOR[r[0]], value: r[6], tipHtml: gemmTip(r).replace(/"/g, "&quot;")
+    }))
+  }));
+  groupedBars(document.getElementById("c-" + dt), groups,
+    { ymax: 16, ticks: [0, 4, 8, 12, 16], label: `GEMM throughput, ${dt}, GMAC/s by kernel and size` });
+}
+
+{ // int8 vs fp32, blocked kernel
+  const groups = SIZES.map(sz => ({
+    label: sz + "×" + sz,
+    bars: ["fp32", "int8"].map((dt, i) => {
+      const r = GEMM.find(q => q[0] === "blocked" && q[1] === dt && q[2] === sz);
+      return { color: i === 0 ? css('--s1') : css('--s2'), value: r[6],
+               tipHtml: gemmTip(r).replace(/"/g, "&quot;") };
+    })
+  }));
+  groupedBars(document.getElementById("c-vs"), groups,
+    { ymax: 16, ticks: [0, 4, 8, 12, 16], label: "Blocked GEMM throughput, fp32 vs int8, GMAC/s" });
+}
+
+{ // e2e horizontal bars with direct labels
+  const W = 900, H = 110, mL = 118, mR = 150, bh = 22, gap = 18, mT = 14;
+  const xmax = 0.5, iw = W - mL - mR;
+  const x = v => mL + iw * (v / xmax);
+  const rows = [
+    { name: "FP32 reference", v: E2E.fp32_ms, color: css('--s1'), extra: "2,113 inf/s" },
+    { name: "INT8 quantized", v: E2E.int8_ms, color: css('--s2'), extra: "6,156 inf/s · 2.9×" },
+  ];
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "End-to-end latency, FP32 vs INT8, milliseconds");
+  let inner = "";
+  for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5]) {
+    inner += `<line x1="${x(t)}" y1="${mT - 6}" x2="${x(t)}" y2="${mT + 2 * bh + gap + 6}" stroke="${css('--grid')}" stroke-width="1"/>`;
+    inner += `<text x="${x(t)}" y="${mT + 2 * bh + gap + 20}" text-anchor="middle" font-size="10" fill="${css('--muted')}">${t} ms</text>`;
+  }
+  rows.forEach((r, i) => {
+    const yb = mT + i * (bh + gap), wv = x(r.v) - mL, rad = 4;
+    inner += `<text x="${mL - 10}" y="${yb + bh / 2 + 4}" text-anchor="end" font-size="12" fill="${css('--ink-2')}">${r.name}</text>`;
+    inner += `<path d="M${mL},${yb} H${mL + wv - rad} Q${mL + wv},${yb} ${mL + wv},${yb + rad} V${yb + bh - rad} Q${mL + wv},${yb + bh} ${mL + wv - rad},${yb + bh} H${mL} Z" fill="${r.color}"/>`;
+    inner += `<text x="${mL + wv + 8}" y="${yb + bh / 2 + 4}" font-size="12" fill="${css('--ink')}">${r.v.toFixed(3)} ms</text>`;
+    inner += `<text x="${mL + wv + 78}" y="${yb + bh / 2 + 4}" font-size="11.5" fill="${css('--muted')}">${r.extra}</text>`;
+  });
+  inner += `<line x1="${mL}" y1="${mT - 6}" x2="${mL}" y2="${mT + 2 * bh + gap + 6}" stroke="${css('--baseline')}" stroke-width="1"/>`;
+  svg.innerHTML = inner;
+  document.getElementById("c-e2e").appendChild(svg);
+}
+
+{ // full results table
+  const tb = document.querySelector("#tbl tbody");
+  tb.innerHTML = GEMM.map(r =>
+    `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}×${r[2]}</td>` +
+    `<td>${r[3].toFixed(4)}</td><td>${r[4].toFixed(4)}</td><td>${r[5]}</td><td>${r[6].toFixed(3)}</td></tr>`
+  ).join("");
+}
+</script>
+</body>
+</html>
