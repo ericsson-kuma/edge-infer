@@ -25,6 +25,7 @@ add_library(edge_infer STATIC
   src/version.cpp
   src/quant.cpp
   src/gemm.cpp
+  src/ops.cpp
 )
 target_include_directories(edge_infer PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
