@@ -67,7 +67,10 @@ std::vector<GemmResult> bench_gemm(const std::vector<int>& sizes) {
         {"reordered", edge::gemm_i8_reordered},
         {"blocked", edge::gemm_i8_blocked},
     };
-    for (auto [name, fn] : i8_kernels) {
+    for (const auto& kv : i8_kernels) {
+      // Not a structured binding: those cannot be lambda-captured in C++17.
+      const char* name = kv.first;
+      GemmI8Fn fn = kv.second;
       auto s = bench::run([&] {
         fn(Ai.data(), Bi.data(), Ci.data(), n, n, n);
         bench::sink += Ci[nn - 1];
@@ -81,7 +84,9 @@ std::vector<GemmResult> bench_gemm(const std::vector<int>& sizes) {
         {"reordered", edge::gemm_f32_reordered},
         {"blocked", edge::gemm_f32_blocked},
     };
-    for (auto [name, fn] : f32_kernels) {
+    for (const auto& kv : f32_kernels) {
+      const char* name = kv.first;
+      GemmF32Fn fn = kv.second;
       auto s = bench::run([&] {
         fn(Af.data(), Bf.data(), Cf.data(), n, n, n);
         bench::sink += static_cast<int64_t>(Cf[nn - 1]);

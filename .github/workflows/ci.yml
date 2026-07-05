@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    name: ${{ matrix.compiler.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { name: gcc,   cc: gcc,   cxx: g++ }
+          - { name: clang, cc: clang, cxx: clang++ }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.compiler.cc }}
+          CXX: ${{ matrix.compiler.cxx }}
+        # -march=native off in CI for run-to-run reproducibility across
+        # heterogeneous runners; warnings promoted to errors.
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DEDGE_INFER_NATIVE=OFF
+          -DEDGE_INFER_WERROR=ON
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Bench smoke (quick sizes, correctness of harness only)
+        run: ./build/bench/edge_bench --quick > /dev/null
