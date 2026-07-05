@@ -20,6 +20,7 @@ set(EDGE_INFER_TESTS
   test_quant
   test_gemm
   test_ops
+  test_graph
 )
 
 foreach(t ${EDGE_INFER_TESTS})
