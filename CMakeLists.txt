@@ -23,6 +23,7 @@ option(EDGE_INFER_WERROR      "Treat warnings as errors" OFF)
 # ---- Core runtime library (zero third-party dependencies) ---------------
 add_library(edge_infer STATIC
   src/version.cpp
+  src/quant.cpp
 )
 target_include_directories(edge_infer PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

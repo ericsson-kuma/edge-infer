@@ -17,6 +17,7 @@ include(GoogleTest)
 
 set(EDGE_INFER_TESTS
   test_tensor
+  test_quant
 )
 
 foreach(t ${EDGE_INFER_TESTS})
