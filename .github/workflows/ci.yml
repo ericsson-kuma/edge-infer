@@ -16,7 +16,7 @@ jobs:
           - { name: gcc,   cc: gcc,   cxx: g++ }
           - { name: clang, cc: clang, cxx: clang++ }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure
         env:
