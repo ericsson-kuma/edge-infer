@@ -1,0 +1,2 @@
+date,host,cpu,e2e_fp32_ms,e2e_int8_ms,e2e_int8_speedup,gemm_blocked_int8_512_gmacs,gemm_blocked_fp32_512_gmacs,cosine,max_abs_err
+2026-07-06,cuda2,Intel(R) Core(TM) i7-6700 CPU @ 3.40GHz,0.449,0.154,2.91,10.9,9.0,0.99903,0.3629
